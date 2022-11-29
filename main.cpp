@@ -2,9 +2,8 @@
 #include <iostream>
 #include <string>
 
-int main() {
-
-  redisContext *c = redisConnect(getenv("REDIS"), 6379);
+void serve(std::string redis) {
+  redisContext *c = redisConnect(getenv(redis.c_str()), 6379);
 
   if (c == NULL || c->err) {
     if (c) {
@@ -23,4 +22,10 @@ int main() {
     std::cout << cmd << std::endl;
     reply = (redisReply *)redisCommand(c, "RPUSH foo %s", cmd.c_str());
   }
+}
+
+int main() {
+  serve("REDIS0");
+  serve("REDIS1");
+  return 0;
 }
