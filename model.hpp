@@ -14,24 +14,29 @@ public:
 
 class Task {
 public:
+  std::string type;
+};
+
+class ForwardTask : Task {
+public:
   Model *model;
   int layer_id;
-  Task(Model *model, int layer_id) : model(model), layer_id(layer_id) {}
+  ForwardTask(Model *model, int layer_id) : model(model), layer_id(layer_id) {}
 };
 
 class ModelTask {
 public:
   Model *model;
-  std::vector<Task> tasks;
+  std::vector<ForwardTask> tasks;
   ModelTask(Model *model) : model(model) {
     tasks.reserve(model->layer);
     for (int i = 0; i < model->layer; i++) {
-      tasks.push_back(Task(model, i));
+      tasks.push_back(ForwardTask(model, i));
     }
   }
 };
 
-void send_model(Task &task, redisContext *c) {
+void send_model(ForwardTask &task, redisContext *c) {
   redisReply *reply;
   std::string cmd = std::to_string(task.model->model_id) + " " +
                     std::to_string(task.layer_id);
