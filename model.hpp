@@ -36,16 +36,30 @@ public:
   }
 };
 
-void send_model(ForwardTask &task, redisContext *c) {
+void send_model(redisContext *c, ForwardTask &task) {
   redisReply *reply;
-  std::string cmd = std::to_string(task.model->model_id) + " " +
+  std::string cmd = "forward " + std::to_string(task.model->model_id) + " " +
                     std::to_string(task.layer_id);
   std::cout << cmd << std::endl;
   reply = (redisReply *)redisCommand(c, "RPUSH foo %s", cmd.c_str());
 }
 
-void send_model_task(ModelTask &model_task, redisContext *c) {
+void send_model_task(redisContext *c, ModelTask &model_task) {
   for (auto &task : model_task.tasks) {
-    send_model(task, c);
+    send_model(c, task);
   }
+}
+
+void send_push(redisContext *c, int variable_id) {
+  redisReply *reply;
+  std::string cmd = "push " + std::to_string(variable_id);
+  std::cout << cmd << std::endl;
+  reply = (redisReply *)redisCommand(c, "RPUSH foo %s", cmd.c_str());
+}
+
+void send_pop(redisContext *c, int variable_id) {
+  redisReply *reply;
+  std::string cmd = "pop " + std::to_string(variable_id);
+  std::cout << cmd << std::endl;
+  reply = (redisReply *)redisCommand(c, "RPUSH foo %s", cmd.c_str());
 }
