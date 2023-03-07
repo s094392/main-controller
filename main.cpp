@@ -29,9 +29,9 @@ int main() {
   ModelTask vgg161(&vgg16);
   send_model_task(c0, vgg160);
   send_push(c0, 0);
-  send_pop(c0, 0);
+  // send_pop(c0, 0);
   send_model_task(c1, vgg161);
-  send_push(c1, 0);
-  send_pop(c1, 0);
+  send_push(c1, 1);
+  // send_pop(c1, 0);
   return 0;
 }
