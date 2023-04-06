@@ -30,23 +30,21 @@ int main() {
   ModelTask vgg160(&vgg16);
   ModelTask vgg161(&vgg16);
 
-  // send_model_task(c0, vgg160);
-
-  for (int t = 0; t < 5; t++) {
-    send_create(c0, 8);
+  for (int t = 0; t < 10; t++) {
+    send_create(c0, 32);
     send_model_task(c0, vgg160);
   }
-  for (int t = 0; t < 5; t++) {
-    send_create(c0, 8);
-    for (int i = 0; i < vgg161.tasks.size(); i++) {
-      if (i % 2 == 0) {
-        send_model(c0, vgg160.tasks[i]);
-        send_send(c0, c1, 0, 1);
-      } else {
-        send_model(c1, vgg161.tasks[i]);
-        send_send(c1, c0, 1, 0);
-      }
-    }
-  }
+  // for (int t = 0; t < 10; t++) {
+  //   send_create(c0, 16);
+  //   for (int i = 0; i < vgg161.tasks.size(); i++) {
+  //     if (i % 2 == 0) {
+  //       send_model(c0, vgg160.tasks[i]);
+  //       send_send(c0, c1, 0, 1);
+  //     } else {
+  //       send_model(c1, vgg161.tasks[i]);
+  //       send_send(c1, c0, 1, 0);
+  //     }
+  //   }
+  // }
   return 0;
 }
