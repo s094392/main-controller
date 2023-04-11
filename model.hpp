@@ -3,6 +3,7 @@
 
 #include "json.hpp"
 #include <atomic>
+#include <chrono>
 #include <fstream>
 #include <iostream>
 #include <vector>
@@ -51,22 +52,28 @@ public:
   Task() : status(status::todo) {}
 };
 
+class ModelTask;
+
 class ForwardTask : public Task {
 public:
   Model *model;
+  ModelTask *model_task;
   int layer_id;
-  ForwardTask(Model *model, int layer_id)
-      : model(model), layer_id(layer_id), Task() {}
+  ForwardTask(Model *model, int layer_id, ModelTask *model_task)
+      : model(model), layer_id(layer_id), model_task(model_task), Task() {}
 };
 
 class ModelTask {
 public:
   Model *model;
+  int pos;
+  int start_time;
+  int end_time;
   std::vector<ForwardTask> tasks;
   ModelTask(Model *model) : model(model) {
     tasks.reserve(model->size());
     for (int i = 0; i < model->size(); i++) {
-      tasks.push_back(ForwardTask(model, i));
+      tasks.push_back(ForwardTask(model, i, this));
     }
   }
 };
