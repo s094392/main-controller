@@ -1,18 +1,45 @@
 #ifndef MODEL_HPP
 #define MODEL_HPP
 
-#include <hiredis/hiredis.h>
+#include "json.hpp"
+#include <fstream>
 #include <iostream>
-#include <string>
 #include <vector>
+
+using json = nlohmann::json;
+using namespace std;
+
+enum class op { conv, relu, maxpool, linear, flat };
+
+class Layer {
+public:
+  op type;
+  Layer(op type) : type(type){};
+};
 
 class Model {
 public:
-  std::string name;
-  int model_id;
-  int layer;
-  Model(int model_id, std::string name, int layer)
-      : model_id(model_id), name(name), layer(layer) {}
+  int id;
+  string name;
+  Model(int id, string name) : id(id), name(name){};
+  size_t size() { return layer_data.size(); }
+
+  void add_conv_layer(int in_channels, int out_channels, int filter_size,
+                      int stride, int padding) {
+    this->layer_data.push_back(Layer(op::conv));
+  }
+  void add_relu_layer() { this->layer_data.push_back(Layer(op::relu)); }
+
+  void add_maxpool_layer(int size, int stride) {
+    this->layer_data.push_back(Layer(op::maxpool));
+  }
+  void add_linear_layer(int in_channels, int out_channels) {
+    this->layer_data.push_back(Layer(op::linear));
+  }
+  void add_flat_layer() { this->layer_data.push_back(Layer(op::flat)); }
+
+private:
+  vector<Layer> layer_data;
 };
 
 class Task {
@@ -32,11 +59,38 @@ public:
   Model *model;
   std::vector<ForwardTask> tasks;
   ModelTask(Model *model) : model(model) {
-    tasks.reserve(model->layer);
-    for (int i = 0; i < model->layer; i++) {
+    tasks.reserve(model->size());
+    for (int i = 0; i < model->size(); i++) {
       tasks.push_back(ForwardTask(model, i));
     }
   }
 };
+
+int get_models_from_json(vector<Model> &models, string filename) {
+  ifstream f(filename);
+  json data = json::parse(f);
+  for (int i = 0; i < data["Models"].size(); i++) {
+    models.push_back(Model(i, data["Models"][i]["name"]));
+    for (auto &layer : data["Models"][i]["layers"]) {
+      if (layer["type"] == "conv") {
+        models[i].add_conv_layer(
+            layer["params"]["in_channels"], layer["params"]["out_channels"],
+            layer["params"]["filter_size"], layer["params"]["stride"],
+            layer["params"]["padding"]);
+      } else if (layer["type"] == "relu") {
+        models[i].add_relu_layer();
+      } else if (layer["type"] == "maxpool") {
+        models[i].add_maxpool_layer(layer["params"]["ksize"],
+                                    layer["params"]["kstride"]);
+      } else if (layer["type"] == "linear") {
+        models[i].add_linear_layer(layer["params"]["in_channels"],
+                                   layer["params"]["out_channels"]);
+      } else if (layer["type"] == "flat") {
+        models[i].add_flat_layer();
+      }
+    }
+  }
+  return models.size();
+}
 
 #endif // !MODEL_HPP

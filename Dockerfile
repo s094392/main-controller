@@ -1,6 +1,6 @@
-FROM archlinux
+FROM ubuntu
 
-RUN sed -i '1s/^/Server = http:\/\/archlinux.cs.nctu.edu.tw\/$repo\/os\/$arch\n/' /etc/pacman.d/mirrorlist
-RUN pacman -Sy hiredis --noconfirm
+RUN apt update
+RUN DEBIAN_FRONTEND=noninteractive TZ=Etc/UTC apt -y install libhiredis-dev g++ make
 
 CMD ["/main-controller/controller"]
