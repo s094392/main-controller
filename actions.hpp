@@ -9,8 +9,9 @@
 
 void send_model(redisContext *c, ForwardTask &task) {
   redisReply *reply;
-  std::string cmd = "forward " + std::to_string(task.model->id) + " " +
-                    std::to_string(task.layer_id);
+  std::string cmd = "forward " + std::to_string(task.task_id) + " " +
+                    std::to_string(task.model->id) + " " +
+                    std::to_string(task.layer_id) + " " + "0";
   std::cout << cmd << std::endl;
   reply = (redisReply *)redisCommand(c, "RPUSH foo %s", cmd.c_str());
 }

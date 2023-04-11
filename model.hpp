@@ -2,6 +2,7 @@
 #define MODEL_HPP
 
 #include "json.hpp"
+#include <atomic>
 #include <fstream>
 #include <iostream>
 #include <vector>
@@ -44,14 +45,18 @@ private:
 
 class Task {
 public:
+  int task_id;
+  enum status { todo, done } status;
   std::string type;
+  Task() : status(status::todo) {}
 };
 
-class ForwardTask : Task {
+class ForwardTask : public Task {
 public:
   Model *model;
   int layer_id;
-  ForwardTask(Model *model, int layer_id) : model(model), layer_id(layer_id) {}
+  ForwardTask(Model *model, int layer_id)
+      : model(model), layer_id(layer_id), Task() {}
 };
 
 class ModelTask {
