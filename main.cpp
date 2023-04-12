@@ -36,14 +36,14 @@ public:
 int a = 1;
 
 void schedule(vector<Worker> &workers, vector<Model> &models,
-              queue<ForwardTask *> &queue) {
+              deque<ForwardTask *> &queue) {
   a++;
   if (a % 2 == 0) {
     for (auto &worker : workers) {
       if (!queue.empty()) {
         if (worker.status == Worker::status::idle) {
-          ForwardTask *task = queue.front();
-          queue.pop();
+          ForwardTask *task = queue.back();
+          queue.pop_back();
           worker.status = Worker::status::running;
           send_model(worker.c, *task);
         }
@@ -52,10 +52,12 @@ void schedule(vector<Worker> &workers, vector<Model> &models,
   } else {
     for (int i = workers.size() - 1; i >= 0; i--) {
       if (!queue.empty()) {
-        ForwardTask *task = queue.front();
-        queue.pop();
-        workers[i].status = Worker::status::running;
-        send_model(workers[i].c, *task);
+        if (workers[i].status == Worker::status::idle) {
+          ForwardTask *task = queue.back();
+          queue.pop_back();
+          workers[i].status = Worker::status::running;
+          send_model(workers[i].c, *task);
+        }
       }
     }
   }
@@ -67,25 +69,22 @@ int main() {
   vector<Model> models;
   vector<Worker> workers = {Worker(0, "REDIS0"), Worker(1, "REDIS1")};
   vector<ForwardTask *> tasks;
-  queue<ForwardTask *> queue;
+  vector<ModelTask> model_tasks;
+  deque<ForwardTask *> queue;
   int n = get_models_from_json(models, "schema.json");
 
-  ModelTask vgg160(&models[0]);
-  ModelTask vgg161(&models[0]);
-  vgg160.pos = 0;
-  vgg161.pos = 1;
-
-  for (auto &i : vgg160.tasks) {
-    i.task_id = tasks.size();
-    tasks.push_back(&i);
-  }
-  for (auto &i : vgg161.tasks) {
-    i.task_id = tasks.size();
-    tasks.push_back(&i);
+  for (int i = 0; i < 5; i++) {
+    model_tasks.push_back(ModelTask(&models[0], i));
+    model_tasks.back().create_tasks();
   }
 
-  queue.push(&vgg160.tasks[0]);
-  queue.push(&vgg161.tasks[0]);
+  for (auto &model_task : model_tasks) {
+    for (auto &i : model_task.tasks) {
+      i.task_id = tasks.size();
+      tasks.push_back(&i);
+    }
+    queue.push_back(&model_task.tasks[0]);
+  }
 
   schedule(workers, models, queue);
 
@@ -95,14 +94,12 @@ int main() {
     reply = (redisReply *)redisCommand(done, "LPOP done");
     if (reply->type == REDIS_REPLY_STRING) {
       result = reply->str;
-      cout << result << "\n";
 
       istringstream iss(result);
       freeReplyObject(reply);
 
       int task_id, worker_id;
       iss >> task_id >> worker_id;
-      cout << task_id << " " << worker_id << "\n";
       auto task = tasks[task_id];
       int end = chrono::duration_cast<chrono::microseconds>(
                     chrono::system_clock::now().time_since_epoch())
@@ -111,7 +108,7 @@ int main() {
       task->status = Task::status::done;
 
       if (task->layer_id + 1 < task->model->size()) {
-        queue.push(tasks[task_id + 1]);
+        queue.push_back(tasks[task_id + 1]);
       } else {
         cout << end - task->model_task->start_time << endl;
       }

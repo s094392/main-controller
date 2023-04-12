@@ -70,8 +70,10 @@ public:
   int start_time;
   int end_time;
   std::vector<ForwardTask> tasks;
-  ModelTask(Model *model) : model(model) {
+  ModelTask(Model *model, int pos) : model(model), pos(pos) {
     tasks.reserve(model->size());
+  }
+  void create_tasks() {
     for (int i = 0; i < model->size(); i++) {
       tasks.push_back(ForwardTask(model, i, this));
     }
