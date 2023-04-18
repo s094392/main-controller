@@ -70,8 +70,8 @@ class ModelTask {
 public:
   Model &model;
   int pos;
-  int start_time;
-  int end_time;
+  long long int start_time;
+  long long int end_time;
   std::vector<ForwardTask> tasks;
   ModelTask(Model &model, int pos) : model(model), pos(pos) {
     tasks.reserve(model.size());

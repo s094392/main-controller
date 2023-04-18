@@ -36,32 +36,24 @@ public:
 int a = 1;
 
 void schedule(vector<Worker> &workers, vector<Model> &models,
-              deque<ForwardTask *> &queue) {
-  a++;
-  if (a % 2 == 0) {
-    for (auto &worker : workers) {
-      if (!queue.empty()) {
-        if (worker.status == Worker::status::idle) {
-          ForwardTask *task = queue.back();
-          queue.pop_back();
-          worker.status = Worker::status::running;
-          send_model(worker.c, *task);
-        }
+              vector<deque<ForwardTask *>> &queues) {
+  for (auto &worker : workers) {
+    if (worker.status == Worker::status::idle) {
+      ForwardTask *task = nullptr;
+      if (!queues[worker.id].empty()) {
+        task = queues[worker.id].back();
+        queues[worker.id].pop_back();
+      } else if (!queues[1 - worker.id].empty()) {
+        task = queues[1 - worker.id].back();
+        queues[1 - worker.id].pop_back();
       }
-    }
-  } else {
-    for (int i = workers.size() - 1; i >= 0; i--) {
-      if (!queue.empty()) {
-        if (workers[i].status == Worker::status::idle) {
-          ForwardTask *task = queue.back();
-          queue.pop_back();
-          workers[i].status = Worker::status::running;
-          send_model(workers[i].c, *task);
-        }
+      if (task) {
+        worker.status = Worker::status::running;
+        send_model(worker.c, *task);
       }
     }
   }
-};
+}
 
 int main() {
   redisContext *done = redis_init("REDISDONE");
@@ -70,14 +62,14 @@ int main() {
   vector<Worker> workers = {Worker(0, "REDIS0"), Worker(1, "REDIS1")};
   vector<reference_wrapper<ForwardTask>> tasks;
   vector<ModelTask> model_tasks;
-  deque<ForwardTask *> queue;
   int n = get_models_from_json(models, "schema.json");
+  vector<deque<ForwardTask *>> queues(n);
 
-  for (int i = 0; i < 100; i++) {
-    model_tasks.emplace_back(ModelTask(models[i % 2], i % 10));
+  for (int i = 0; i < 2000; i++) {
+    model_tasks.emplace_back(ModelTask(models[i % 2], i % 3 + (i % 2) * 3));
   }
 
-  for (int i = 0; i < 100; i++) {
+  for (int i = 0; i < 2000; i++) {
     model_tasks[i].create_tasks();
   }
 
@@ -86,10 +78,10 @@ int main() {
       i.task_id = tasks.size();
       tasks.emplace_back(i);
     }
-    queue.push_front(&model_task.tasks[0]);
+    queues[model_task.model.id].push_front(&model_task.tasks[0]);
   }
 
-  schedule(workers, models, queue);
+  schedule(workers, models, queues);
 
   while (true) {
     string result;
@@ -105,24 +97,25 @@ int main() {
         int task_id, worker_id;
         iss >> task_id >> worker_id;
         auto task = tasks[task_id];
-        int end = chrono::duration_cast<chrono::microseconds>(
-                      chrono::system_clock::now().time_since_epoch())
-                      .count();
+        long long int end = chrono::duration_cast<chrono::microseconds>(
+                                chrono::system_clock::now().time_since_epoch())
+                                .count();
         workers[worker_id].status = Worker::status::idle;
         task.get().status = Task::status::done;
 
         if (task.get().layer_id + 1 < task.get().model.size()) {
-          queue.push_back(&tasks[task_id + 1].get());
+          queues[task.get().model.id].push_back(&tasks[task_id + 1].get());
         } else {
-          cout << end - task.get().model_task.start_time << endl;
+          // cout << end - task.get().model_task.start_time << endl;
+          cout << task.get().model_task.start_time << " " << end << endl;
           task.get().model_task.end_time = end;
         }
       } else {
         break;
       }
     }
-    if (queue.size()) {
-      schedule(workers, models, queue);
+    if (queues[0].size() || queues[1].size()) {
+      schedule(workers, models, queues);
     }
   }
 
