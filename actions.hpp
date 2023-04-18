@@ -11,15 +11,16 @@ using namespace std;
 
 void _send_cmd(redisContext *c, string cmd) {
   redisReply *reply;
+  cout << cmd << endl;
   reply = (redisReply *)redisCommand(c, "RPUSH foo %s", cmd.c_str());
 }
 
 void send_model(redisContext *c, ForwardTask &task) {
   string cmd = "forward " + to_string(task.task_id) + " " +
-               to_string(task.model->id) + " " + to_string(task.layer_id) +
-               " " + to_string(task.model_task->pos);
+               to_string(task.model.id) + " " + to_string(task.layer_id) + " " +
+               to_string(task.model_task.pos);
   if (task.layer_id == 0) {
-    task.model_task->start_time =
+    task.model_task.start_time =
         chrono::duration_cast<chrono::microseconds>(
             chrono::system_clock::now().time_since_epoch())
             .count();

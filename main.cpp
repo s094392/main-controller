@@ -68,22 +68,24 @@ int main() {
 
   vector<Model> models;
   vector<Worker> workers = {Worker(0, "REDIS0"), Worker(1, "REDIS1")};
-  vector<ForwardTask *> tasks;
+  vector<reference_wrapper<ForwardTask>> tasks;
   vector<ModelTask> model_tasks;
   deque<ForwardTask *> queue;
   int n = get_models_from_json(models, "schema.json");
 
-  for (int i = 0; i < 5; i++) {
-    model_tasks.push_back(ModelTask(&models[0], i));
-    model_tasks.back().create_tasks();
+  for (int i = 0; i < 10; i++) {
+    model_tasks.emplace_back(ModelTask(models[0], i));
+  }
+  for (int i = 0; i < 10; i++) {
+    model_tasks[i].create_tasks();
   }
 
   for (auto &model_task : model_tasks) {
     for (auto &i : model_task.tasks) {
       i.task_id = tasks.size();
-      tasks.push_back(&i);
+      tasks.emplace_back(i);
     }
-    queue.push_back(&model_task.tasks[0]);
+    queue.push_front(&model_task.tasks[0]);
   }
 
   schedule(workers, models, queue);
@@ -91,26 +93,30 @@ int main() {
   while (true) {
     string result;
     redisReply *reply;
-    reply = (redisReply *)redisCommand(done, "LPOP done");
-    if (reply->type == REDIS_REPLY_STRING) {
-      result = reply->str;
+    while (true) {
+      reply = (redisReply *)redisCommand(done, "LPOP done");
+      if (reply->type == REDIS_REPLY_STRING) {
+        result = reply->str;
 
-      istringstream iss(result);
-      freeReplyObject(reply);
+        istringstream iss(result);
+        freeReplyObject(reply);
 
-      int task_id, worker_id;
-      iss >> task_id >> worker_id;
-      auto task = tasks[task_id];
-      int end = chrono::duration_cast<chrono::microseconds>(
-                    chrono::system_clock::now().time_since_epoch())
-                    .count();
-      workers[worker_id].status = Worker::status::idle;
-      task->status = Task::status::done;
+        int task_id, worker_id;
+        iss >> task_id >> worker_id;
+        auto task = tasks[task_id];
+        int end = chrono::duration_cast<chrono::microseconds>(
+                      chrono::system_clock::now().time_since_epoch())
+                      .count();
+        workers[worker_id].status = Worker::status::idle;
+        task.get().status = Task::status::done;
 
-      if (task->layer_id + 1 < task->model->size()) {
-        queue.push_back(tasks[task_id + 1]);
+        if (task.get().layer_id + 1 < task.get().model.size()) {
+          queue.push_back(&tasks[task_id + 1].get());
+        } else {
+          cout << end - task.get().model_task.start_time << endl;
+        }
       } else {
-        cout << end - task->model_task->start_time << endl;
+        break;
       }
     }
     if (queue.size()) {

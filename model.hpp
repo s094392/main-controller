@@ -56,26 +56,26 @@ class ModelTask;
 
 class ForwardTask : public Task {
 public:
-  Model *model;
-  ModelTask *model_task;
+  Model &model;
+  ModelTask &model_task;
   int layer_id;
-  ForwardTask(Model *model, int layer_id, ModelTask *model_task)
+  ForwardTask(Model &model, int layer_id, ModelTask &model_task)
       : model(model), layer_id(layer_id), model_task(model_task), Task() {}
 };
 
 class ModelTask {
 public:
-  Model *model;
+  Model &model;
   int pos;
   int start_time;
   int end_time;
   std::vector<ForwardTask> tasks;
-  ModelTask(Model *model, int pos) : model(model), pos(pos) {
-    tasks.reserve(model->size());
+  ModelTask(Model &model, int pos) : model(model), pos(pos) {
+    tasks.reserve(model.size());
   }
   void create_tasks() {
-    for (int i = 0; i < model->size(); i++) {
-      tasks.push_back(ForwardTask(model, i, this));
+    for (int i = 0; i < model.size(); i++) {
+      tasks.emplace_back(ForwardTask(model, i, *this));
     }
   }
 };
