@@ -73,10 +73,11 @@ int main() {
   deque<ForwardTask *> queue;
   int n = get_models_from_json(models, "schema.json");
 
-  for (int i = 0; i < 10; i++) {
-    model_tasks.emplace_back(ModelTask(models[0], i));
+  for (int i = 0; i < 100; i++) {
+    model_tasks.emplace_back(ModelTask(models[i % 2], i % 10));
   }
-  for (int i = 0; i < 10; i++) {
+
+  for (int i = 0; i < 100; i++) {
     model_tasks[i].create_tasks();
   }
 
@@ -114,6 +115,7 @@ int main() {
           queue.push_back(&tasks[task_id + 1].get());
         } else {
           cout << end - task.get().model_task.start_time << endl;
+          task.get().model_task.end_time = end;
         }
       } else {
         break;

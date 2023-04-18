@@ -11,7 +11,7 @@ using namespace std;
 
 void _send_cmd(redisContext *c, string cmd) {
   redisReply *reply;
-  cout << cmd << endl;
+  // cout << cmd << endl;
   reply = (redisReply *)redisCommand(c, "RPUSH foo %s", cmd.c_str());
 }
 
