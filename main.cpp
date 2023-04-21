@@ -9,6 +9,7 @@
 #include <unistd.h>
 #include <vector>
 using namespace std;
+redisContext *c;
 
 redisContext *redis_init(string redis) {
   redisContext *c = redisConnect(getenv(redis.c_str()), 6379);
@@ -35,6 +36,18 @@ public:
 
 int a = 1;
 
+vector<bool> variables;
+
+int get_free_variable() {
+  for (int i = 1; i < variables.size(); i++) {
+    if (variables[i]) {
+      variables[i] = false;
+      return i;
+    }
+  }
+  return -1;
+}
+
 void schedule(vector<Worker> &workers, vector<Model> &models,
               vector<deque<ForwardTask *>> &queues) {
   for (auto &worker : workers) {
@@ -48,6 +61,9 @@ void schedule(vector<Worker> &workers, vector<Model> &models,
         // queues[1 - worker.id].pop_back();
       }
       if (task) {
+        if (task->layer_id == 0) {
+          task->model_task.pos = get_free_variable();
+        }
         worker.status = Worker::status::running;
         send_model(worker.c, *task);
       }
@@ -71,7 +87,7 @@ void wait_workers(int n) {
 }
 
 int main() {
-  redisContext *done = redis_init("REDISDONE");
+  c = redis_init("REDISDONE");
 
   vector<Model> models;
   vector<Worker> workers = {Worker(0, "REDIS0"), Worker(1, "REDIS1")};
@@ -79,8 +95,19 @@ int main() {
   vector<ModelTask> model_tasks;
   int n = get_models_from_json(models, "schema.json");
   vector<deque<ForwardTask *>> queues(n);
+  variables = vector<bool>(8, false);
 
-  int N = 4;
+  int N = 2000;
+
+  for (int i = 1; i < variables.size(); i++) {
+    redisReply *reply;
+    reply =
+        (redisReply *)redisCommand(c, "RPUSH create %s", to_string(i).c_str());
+    freeReplyObject(reply);
+    reply = (redisReply *)redisCommand(c, "BLPOP done 0");
+    freeReplyObject(reply);
+    variables[i] = true;
+  }
 
   for (int i = 0; i < N; i++) {
     model_tasks.emplace_back(ModelTask(models[i % 2], i));
@@ -106,7 +133,7 @@ int main() {
     string result;
     redisReply *reply;
     while (true) {
-      reply = (redisReply *)redisCommand(done, "LPOP done");
+      reply = (redisReply *)redisCommand(c, "LPOP done");
       if (reply->type == REDIS_REPLY_STRING) {
         result = reply->str;
 
@@ -115,22 +142,29 @@ int main() {
 
         int task_id, worker_id;
         iss >> task_id >> worker_id;
-        auto task = tasks[task_id];
-        task.get().model_task.end_time =
-            chrono::duration_cast<chrono::microseconds>(
-                chrono::system_clock::now().time_since_epoch())
-                .count();
-        workers[worker_id].status = Worker::status::idle;
-        task.get().status = Task::status::done;
-
-        if (task.get().layer_id + 1 < task.get().model.size()) {
-          queues[task.get().model.id].push_back(&tasks[task_id + 1].get());
+        if (worker_id == -1) {
+          variables[task_id] = true;
         } else {
-          cout << task.get().model_task.start_time << " "
-               << task.get().model_task.end_time << " "
-               << task.get().model_task.end_time -
-                      task.get().model_task.start_time
-               << " " << task.get().model.id << endl;
+          auto task = tasks[task_id];
+          task.get().model_task.end_time =
+              chrono::duration_cast<chrono::microseconds>(
+                  chrono::system_clock::now().time_since_epoch())
+                  .count();
+          workers[worker_id].status = Worker::status::idle;
+          task.get().status = Task::status::done;
+
+          if (task.get().layer_id + 1 < task.get().model.size()) {
+            queues[task.get().model.id].push_back(&tasks[task_id + 1].get());
+          } else {
+            reply = (redisReply *)redisCommand(
+                c, "RPUSH create %s",
+                to_string(task.get().model_task.pos).c_str());
+            cout << task.get().model_task.start_time << " "
+                 << task.get().model_task.end_time << " "
+                 << task.get().model_task.end_time -
+                        task.get().model_task.start_time
+                 << " " << task.get().model.id << endl;
+          }
         }
       } else {
         break;
