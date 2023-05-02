@@ -1,6 +1,6 @@
 #include "actions.hpp"
-
 #include "model.hpp"
+
 #include <chrono>
 #include <hiredis/hiredis.h>
 #include <iostream>
@@ -8,12 +8,14 @@
 #include <string>
 #include <unistd.h>
 #include <vector>
+
 using namespace std;
+
 redisContext *c;
+vector<bool> variables;
 
 redisContext *redis_init(string redis) {
   redisContext *c = redisConnect(getenv(redis.c_str()), 6379);
-
   if (c == NULL || c->err) {
     if (c) {
       cout << "Error: " << c->errstr;
@@ -24,22 +26,52 @@ redisContext *redis_init(string redis) {
   return c;
 }
 
-class Worker {
+class Creator {
 public:
-  redisContext *c;
   int id;
-  enum status { idle, running } status;
-  Worker(int id, string redis) : id(id), status(status::idle) {
-    c = redis_init(redis.c_str());
+  Creator(int id) : id(id) {}
+  void send_task(int variable_id) {
+    char cmd[10];
+    sprintf(cmd, "%d", variable_id);
+    int n;
+    if (variable_id < 4)
+      n = 0;
+    else
+      n = 1;
+    _send_cmd(c, ("creator" + to_string(n)).c_str(), cmd);
+  }
+
+  void init_variables(int n) {
+    for (int i = 0; i < n; i++) {
+      send_task(i);
+      redisReply *reply = (redisReply *)redisCommand(c, "BLPOP done 0");
+      freeReplyObject(reply);
+      variables[i] = true;
+    }
   }
 };
 
-int a = 1;
+class Worker {
+public:
+  int id;
+  enum status { idle, running } status;
+  Worker(int id) : id(id), status(status::idle) {}
+  void send_task(ForwardTask &task) {
+    char cmd[50];
+    sprintf(cmd, "forward %d %d %d %d", task.task_id, task.model.id,
+            task.layer_id, task.model_task.pos);
+    if (task.layer_id == 0) {
+      task.model_task.start_time =
+          chrono::duration_cast<chrono::microseconds>(
+              chrono::system_clock::now().time_since_epoch())
+              .count();
+    }
+    _send_cmd(c, "worker" + to_string(id), cmd);
+  }
+};
 
-vector<bool> variables;
-
-int get_free_variable() {
-  for (int i = 1; i < variables.size(); i++) {
+int get_free_variable(int k) {
+  for (int i = k; i < variables.size(); i++) {
     if (variables[i]) {
       variables[i] = false;
       return i;
@@ -62,10 +94,13 @@ void schedule(vector<Worker> &workers, vector<Model> &models,
       }
       if (task) {
         if (task->layer_id == 0) {
-          task->model_task.pos = get_free_variable();
+          if (worker.id == 0)
+            task->model_task.pos = get_free_variable(0);
+          else
+            task->model_task.pos = get_free_variable(4);
         }
         worker.status = Worker::status::running;
-        send_model(worker.c, *task);
+        worker.send_task(*task);
       }
     }
   }
@@ -74,43 +109,28 @@ void schedule(vector<Worker> &workers, vector<Model> &models,
 void wait_workers(int n) {
   string result;
   redisReply *reply;
-  redisContext *done = redis_init("REDISDONE");
-  while (n) {
-    reply = (redisReply *)redisCommand(done, "LPOP done");
-    if (reply->type == REDIS_REPLY_STRING) {
-      result = reply->str;
-      istringstream iss(result);
-      freeReplyObject(reply);
-      n--;
-    }
+  while (n--) {
+    reply = (redisReply *)redisCommand(c, "BLPOP initdone 0");
   }
 }
 
 int main() {
-  c = redis_init("REDISDONE");
+  c = redis_init("REDIS");
 
   vector<Model> models;
-  vector<Worker> workers = {Worker(0, "REDIS0"), Worker(1, "REDIS1")};
+  vector<Worker> workers = {Worker(0), Worker(1)};
   vector<reference_wrapper<ForwardTask>> tasks;
   vector<ModelTask> model_tasks;
   int n = get_models_from_json(models, "schema.json");
   vector<deque<ForwardTask *>> queues(n);
   variables = vector<bool>(8, false);
 
-  int N = 2000;
-
-  for (int i = 1; i < variables.size(); i++) {
-    redisReply *reply;
-    reply =
-        (redisReply *)redisCommand(c, "RPUSH create %s", to_string(i).c_str());
-    freeReplyObject(reply);
-    reply = (redisReply *)redisCommand(c, "BLPOP done 0");
-    freeReplyObject(reply);
-    variables[i] = true;
-  }
+  int N = 10;
+  Creator creator(0);
+  creator.init_variables(8);
 
   for (int i = 0; i < N; i++) {
-    model_tasks.emplace_back(ModelTask(models[i % 2], i));
+    model_tasks.emplace_back(ModelTask(models[1], i));
   }
 
   for (int i = 0; i < N; i++) {
@@ -156,9 +176,8 @@ int main() {
           if (task.get().layer_id + 1 < task.get().model.size()) {
             queues[task.get().model.id].push_back(&tasks[task_id + 1].get());
           } else {
-            reply = (redisReply *)redisCommand(
-                c, "RPUSH create %s",
-                to_string(task.get().model_task.pos).c_str());
+            creator.send_task(task.get().model_task.pos);
+
             cout << task.get().model_task.start_time << " "
                  << task.get().model_task.end_time << " "
                  << task.get().model_task.end_time -
@@ -174,8 +193,5 @@ int main() {
       schedule(workers, models, queues);
     }
   }
-
-  vector<int> batches = {64, 32, 16, 8, 4, 2, 1};
-
   return 0;
 }

@@ -31,7 +31,6 @@ public:
     this->layer_data.push_back(Layer(op::conv));
   }
   void add_relu_layer() { this->layer_data.push_back(Layer(op::relu)); }
-
   void add_maxpool_layer(int size, int stride) {
     this->layer_data.push_back(Layer(op::maxpool));
   }
