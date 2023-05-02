@@ -69,10 +69,14 @@ class ModelTask {
 public:
   Model &model;
   int pos;
+  long long int arrival_time;
   long long int start_time;
   long long int end_time;
+  int worker;
   std::vector<ForwardTask> tasks;
-  ModelTask(Model &model, int pos) : model(model), pos(pos) {
+  ModelTask(Model &model, int arrival_time)
+      : model(model), arrival_time(arrival_time) {
+    worker = -1;
     tasks.reserve(model.size());
   }
   void create_tasks() {

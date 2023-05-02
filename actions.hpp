@@ -2,6 +2,7 @@
 #define ACTIONS_HPP
 
 #include "model.hpp"
+#include "utils.hpp"
 #include <hiredis/hiredis.h>
 #include <iostream>
 #include <stdio.h>
