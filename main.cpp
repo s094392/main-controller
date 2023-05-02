@@ -33,12 +33,7 @@ public:
   void send_task(int variable_id) {
     char cmd[10];
     sprintf(cmd, "%d", variable_id);
-    int n;
-    if (variable_id < 4)
-      n = 0;
-    else
-      n = 1;
-    _send_cmd(c, ("creator" + to_string(n)).c_str(), cmd);
+    _send_cmd(c, "creator", cmd);
   }
 
   void init_variables(int n) {
@@ -94,10 +89,7 @@ void schedule(vector<Worker> &workers, vector<Model> &models,
       }
       if (task) {
         if (task->layer_id == 0) {
-          if (worker.id == 0)
-            task->model_task.pos = get_free_variable(0);
-          else
-            task->model_task.pos = get_free_variable(4);
+          task->model_task.pos = get_free_variable(0);
         }
         worker.status = Worker::status::running;
         worker.send_task(*task);
@@ -125,12 +117,12 @@ int main() {
   vector<deque<ForwardTask *>> queues(n);
   variables = vector<bool>(8, false);
 
-  int N = 10;
+  int N = 200;
   Creator creator(0);
   creator.init_variables(8);
 
   for (int i = 0; i < N; i++) {
-    model_tasks.emplace_back(ModelTask(models[1], i));
+    model_tasks.emplace_back(ModelTask(models[i % 2], i));
   }
 
   for (int i = 0; i < N; i++) {
