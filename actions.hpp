@@ -15,7 +15,7 @@ void _send_cmd(redisContext *c, string queue_name, char *cmd) {
   char buffer[50];
   sprintf(buffer, "RPUSH %s %%s", queue_name.c_str());
   redisReply *reply;
-  // cout << cmd << endl;
+  // LOGs(cmd);
   reply = (redisReply *)redisCommand(c, buffer, cmd);
 }
 #endif

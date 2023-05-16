@@ -1,9 +1,9 @@
 from numpy import random
 
-X0 = 35000
-N0 = 100
-X1 = 18000
-N1 = 200
+X0 = 51000
+N0 = 200
+X1 = 27000
+N1 = 400
 
 n0 = random.poisson(lam = X0, size = N0)
 n1 = random.poisson(lam = X1, size = N1)
@@ -26,4 +26,3 @@ n.sort()
 
 for i in n:
     print(i[0], i[1])
-

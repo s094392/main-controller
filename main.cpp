@@ -16,6 +16,8 @@ using namespace std;
 
 redisContext *c;
 vector<bool> variables;
+int move_num0 = 0;
+int move_num1 = 0;
 
 redisContext *redis_init(string redis) {
   redisContext *c = redisConnect(getenv(redis.c_str()), 6379);
@@ -53,15 +55,17 @@ class Worker {
 public:
   int id;
   enum status { idle, running } status;
+  ForwardTask *task;
   Worker(int id) : id(id), status(status::idle) {}
   void send_task(ForwardTask &task) {
+    this->task = &task;
     char cmd[50];
     sprintf(cmd, "forward %d %d %d %d", task.task_id, task.model.id,
             task.layer_id, task.model_task.pos);
     if (task.layer_id == 0) {
       task.model_task.start_time =
           chrono::duration_cast<chrono::microseconds>(
-              chrono::system_clock::now().time_since_epoch())
+              chrono::steady_clock::now().time_since_epoch())
               .count();
     }
     _send_cmd(c, "worker" + to_string(id), cmd);
@@ -78,8 +82,113 @@ int get_free_variable(int k) {
   return -1;
 }
 
-void fixed_schedule(vector<Worker> &workers, vector<Model> &models,
-                    vector<deque<ForwardTask *>> &queues) {
+void layerwise_fifo_scheduler(vector<Worker> &workers, vector<Model> &models,
+                              vector<deque<ForwardTask *>> &queues) {
+  for (auto &worker : workers) {
+    if (worker.status == Worker::status::idle) {
+      ForwardTask *task = nullptr;
+      for (auto &queue : queues) {
+        if (!queue.empty() && queue.back()->layer_id % 2 == worker.id % 2) {
+          task = queue.back();
+          queue.pop_back();
+          break;
+        }
+      }
+      if (task) {
+        task->model_task.worker = worker.id;
+        if (task->layer_id == 0) {
+          task->model_task.pos = get_free_variable(0);
+        }
+        worker.status = Worker::status::running;
+        worker.send_task(*task);
+      }
+    }
+  }
+}
+
+bool moved = false;
+bool moved0 = false;
+
+void layerwise_our_scheduler(vector<Worker> &workers, vector<Model> &models,
+                             vector<deque<ForwardTask *>> &queues) {
+  for (auto &worker : workers) {
+    if (worker.status == Worker::status::idle) {
+      ForwardTask *task = nullptr;
+      if (moved0) {
+        if (worker.id == 0) {
+          if (!queues[worker.id].empty()) {
+            task = queues[worker.id].back();
+            queues[worker.id].pop_back();
+            moved0 = false;
+            // LOGs("release00");
+          } else {
+            task = queues[1 - worker.id].back();
+            queues[1 - worker.id].pop_back();
+            // LOGs(task->layer_id);
+          }
+        } else if (!queues[worker.id].empty()) {
+          task = queues[worker.id].back();
+          queues[worker.id].pop_back();
+          if (task->layer_id + 1 == task->model.size()) {
+            moved0 = false;
+            // LOGs("release01");
+          }
+        }
+      } else if (moved) {
+        if (worker.id == 0 && !queues[worker.id].empty() &&
+            queues[worker.id].back()->layer_id != 0) {
+          task = queues[worker.id].back();
+          queues[worker.id].pop_back();
+          if (task->layer_id + 1 == task->model.size()) {
+            // LOGs("release10", task->model.id);
+            moved = false;
+          }
+        } else {
+          if (worker.id == 1 && !queues[1 - worker.id].empty() &&
+              queues[1 - worker.id].back()->layer_id != 0) {
+            task = queues[1 - worker.id].back();
+            queues[1 - worker.id].pop_back();
+            if (task->layer_id + 1 == task->model.size()) {
+              // LOGs("release11");
+              moved = false;
+            }
+          }
+        }
+      } else {
+        if (!queues[worker.id].empty()) {
+          task = queues[worker.id].back();
+          queues[worker.id].pop_back();
+        } else if (worker.id == 1 && workers[0].status != Worker::idle &&
+                   !queues[1 - worker.id].empty() &&
+                   queues[1 - worker.id].back()->layer_id == 0) {
+          move_num0++;
+          // LOGs("wow");
+          moved = true;
+          task = queues[1 - worker.id].back();
+          queues[1 - worker.id].pop_back();
+        } else if (worker.id == 0 && !queues[1 - worker.id].empty() &&
+                   queues[1 - worker.id].back()->layer_id == 0 &&
+                   workers[1].status != Worker::idle) {
+          move_num1++;
+          moved0 = true;
+          task = queues[1 - worker.id].back();
+          queues[1 - worker.id].pop_back();
+        }
+      }
+      if (task) {
+        task->model_task.worker = worker.id;
+        if (task->layer_id == 0) {
+          task->model_task.pos = get_free_variable(0);
+        }
+        worker.status = Worker::status::running;
+        worker.send_task(*task);
+      }
+    }
+  }
+}
+
+void fixed_scheduler(vector<Worker> &workers, vector<Model> &models,
+                     vector<deque<ForwardTask *>> &queues) {
   for (auto &worker : workers) {
     if (worker.status == Worker::status::idle) {
       ForwardTask *task = nullptr;
@@ -99,8 +208,8 @@ void fixed_schedule(vector<Worker> &workers, vector<Model> &models,
   }
 }
 
-void fifo_schedule(vector<Worker> &workers, vector<Model> &models,
-                   vector<deque<ForwardTask *>> &queues) {
+void fifo_scheduler(vector<Worker> &workers, vector<Model> &models,
+                    vector<deque<ForwardTask *>> &queues) {
   for (auto &worker : workers) {
     if (worker.status == Worker::status::idle) {
       ForwardTask *task = nullptr;
@@ -157,14 +266,15 @@ int main() {
 
   int n = get_models_from_json(models, "schema.json");
   variables = vector<bool>(8, false);
-  reverse(models.begin(), models.end());
 
   ifstream file;
   file.open("workload.txt");
   int tmp, model_id;
 
   while (file >> tmp >> model_id) {
+    // if (model_id == 1)
     model_tasks.emplace_back(ModelTask(models[model_id], tmp));
+    // break;
   }
 
   LOGs("model_tasks created");
@@ -187,7 +297,7 @@ int main() {
   }
 
   long long start_time = chrono::duration_cast<chrono::microseconds>(
-                             chrono::system_clock::now().time_since_epoch())
+                             chrono::steady_clock::now().time_since_epoch())
                              .count();
   while (true) {
     string result;
@@ -195,7 +305,7 @@ int main() {
     if (now_task_id < model_tasks.size()) {
       ModelTask &model_task = model_tasks[now_task_id];
       long long now = chrono::duration_cast<chrono::microseconds>(
-                          chrono::system_clock::now().time_since_epoch())
+                          chrono::steady_clock::now().time_since_epoch())
                           .count();
       if (now > model_task.arrival_time + start_time) {
 
@@ -204,6 +314,7 @@ int main() {
         now_task_id++;
         if (now_task_id == model_tasks.size()) {
           cout << "done" << endl;
+          cout << move_num0 << " " << move_num1 << endl;
         }
       } else {
       }
@@ -224,7 +335,7 @@ int main() {
         auto task = tasks[task_id];
         task.get().model_task.end_time =
             chrono::duration_cast<chrono::microseconds>(
-                chrono::system_clock::now().time_since_epoch())
+                chrono::steady_clock::now().time_since_epoch())
                 .count();
         workers[worker_id].status = Worker::status::idle;
         task.get().status = Task::status::done;
@@ -243,7 +354,11 @@ int main() {
       }
     }
     if (queues[0].size() || queues[1].size()) {
-      fixed_schedule(workers, models, queues);
+      // fixed_scheduler(workers, models, queues);
+      // fifo_scheduler(workers, models, queues);
+      //
+      layerwise_our_scheduler(workers, models, queues);
+      // layerwise_fifo_scheduler(workers, models, queues);
     }
   }
   return 0;
