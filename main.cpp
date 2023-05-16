@@ -251,6 +251,33 @@ void wait_workers(int n) {
 
 Creator creator(0);
 
+void summary(vector<Model> &models, vector<ModelTask> &model_tasks) {
+  long long start = model_tasks.begin()->arrival_time;
+  long long end = model_tasks.begin()->end_time;
+  vector<int> task_num(models.size());
+  vector<int> comp_time(models.size());
+  vector<int> resp_time(models.size());
+
+  for (auto &model_task : model_tasks) {
+    start = min(start, model_task.start_time);
+    end = max(end, model_task.end_time);
+
+    task_num[model_task.model.id]++;
+    comp_time[model_task.model.id] +=
+        model_task.end_time - model_task.start_time;
+    resp_time[model_task.model.id] +=
+        model_task.end_time - model_task.arrival_time;
+  }
+  long long tail_tatency = end - start;
+  cout << "Tail latency: " << tail_tatency << endl;
+  for (int i = 0; i < models.size(); i++) {
+    cout << "Model " << i << "\n";
+    cout << "Model name: " << models[i].name << "\n";
+    cout << "Comp time: " << comp_time[i] / task_num[i] << "\n";
+    cout << "Resp time: " << resp_time[i] / task_num[i] << "\n";
+  }
+}
+
 void loadgen(vector<Model> &models, vector<Worker> &workers,
              vector<reference_wrapper<ForwardTask>> &tasks,
              vector<ModelTask> &model_tasks,
@@ -265,6 +292,17 @@ int main() {
   vector<deque<ForwardTask *>> queues(2);
 
   int n = get_models_from_json(models, "schema.json");
+  if (string(getenv("CASE")) == "0") {
+    models = {models[0], models[1]};
+  } else if (string(getenv("CASE")) == "1") {
+    models = {models[0], models[2]};
+  } else if (string(getenv("CASE")) == "2") {
+    cout << "wow" << endl;
+    models = {models[1], models[2]};
+  }
+  for (auto &model : models) {
+    cout << model.name << endl;
+  }
   variables = vector<bool>(8, false);
 
   ifstream file;
@@ -355,10 +393,8 @@ int main() {
     }
     if (queues[0].size() || queues[1].size()) {
       // fixed_scheduler(workers, models, queues);
-      // fifo_scheduler(workers, models, queues);
-      //
-      layerwise_our_scheduler(workers, models, queues);
-      // layerwise_fifo_scheduler(workers, models, queues);
+      fifo_scheduler(workers, models, queues);
+      // layerwise_our_scheduler(workers, models, queues);
     }
   }
   return 0;

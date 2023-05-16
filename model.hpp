@@ -11,7 +11,7 @@
 using json = nlohmann::json;
 using namespace std;
 
-enum class op { conv, relu, maxpool, linear, flat, avgpool };
+enum class op { conv, relu, maxpool, linear, flat, avgpool, lstm };
 
 class Layer {
 public:
@@ -40,6 +40,9 @@ public:
   void add_flat_layer() { this->layer_data.push_back(Layer(op::flat)); }
   void add_avgpool_layer(int size) {
     this->layer_data.push_back(Layer(op::avgpool));
+  }
+  void add_lstm_layer(int input_size, int hidden_size) {
+    this->layer_data.push_back(Layer(op::lstm));
   }
 
 private:
@@ -109,6 +112,9 @@ int get_models_from_json(vector<Model> &models, string filename) {
         models[i].add_flat_layer();
       } else if (layer["type"] == "avgpool") {
         models[i].add_avgpool_layer(layer["params"]["size"]);
+      } else if (layer["type"] == "lstm") {
+        models[i].add_lstm_layer(layer["params"]["input_size"],
+                                 layer["params"]["hidden_size"]);
       }
     }
   }
