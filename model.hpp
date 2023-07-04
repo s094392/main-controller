@@ -11,7 +11,7 @@
 using json = nlohmann::json;
 using namespace std;
 
-enum class op { conv, relu, maxpool, linear, flat, avgpool, lstm };
+enum class op { conv, relu, maxpool, linear, flat, avgpool, lstm, tf };
 
 class Layer {
 public:
@@ -26,24 +26,14 @@ public:
   Model(int id, string name) : id(id), name(name){};
   size_t size() { return layer_data.size(); }
 
-  void add_conv_layer(int in_channels, int out_channels, int filter_size,
-                      int stride, int padding) {
-    this->layer_data.push_back(Layer(op::conv));
-  }
+  void add_conv_layer() { this->layer_data.push_back(Layer(op::conv)); }
   void add_relu_layer() { this->layer_data.push_back(Layer(op::relu)); }
-  void add_maxpool_layer(int size, int stride) {
-    this->layer_data.push_back(Layer(op::maxpool));
-  }
-  void add_linear_layer(int in_channels, int out_channels) {
-    this->layer_data.push_back(Layer(op::linear));
-  }
+  void add_maxpool_layer() { this->layer_data.push_back(Layer(op::maxpool)); }
+  void add_linear_layer() { this->layer_data.push_back(Layer(op::linear)); }
   void add_flat_layer() { this->layer_data.push_back(Layer(op::flat)); }
-  void add_avgpool_layer(int size) {
-    this->layer_data.push_back(Layer(op::avgpool));
-  }
-  void add_lstm_layer(int input_size, int hidden_size) {
-    this->layer_data.push_back(Layer(op::lstm));
-  }
+  void add_avgpool_layer() { this->layer_data.push_back(Layer(op::avgpool)); }
+  void add_lstm_layer() { this->layer_data.push_back(Layer(op::lstm)); }
+  void add_tf_layer() { this->layer_data.push_back(Layer(op::tf)); }
 
 private:
   vector<Layer> layer_data;
@@ -96,25 +86,21 @@ int get_models_from_json(vector<Model> &models, string filename) {
     models.push_back(Model(i, data["Models"][i]["name"]));
     for (auto &layer : data["Models"][i]["layers"]) {
       if (layer["type"] == "conv") {
-        models[i].add_conv_layer(
-            layer["params"]["in_channels"], layer["params"]["out_channels"],
-            layer["params"]["filter_size"], layer["params"]["stride"],
-            layer["params"]["padding"]);
+        models[i].add_conv_layer();
       } else if (layer["type"] == "relu") {
         models[i].add_relu_layer();
       } else if (layer["type"] == "maxpool") {
-        models[i].add_maxpool_layer(layer["params"]["ksize"],
-                                    layer["params"]["kstride"]);
+        models[i].add_maxpool_layer();
       } else if (layer["type"] == "linear") {
-        models[i].add_linear_layer(layer["params"]["in_channels"],
-                                   layer["params"]["out_channels"]);
+        models[i].add_linear_layer();
       } else if (layer["type"] == "flat") {
         models[i].add_flat_layer();
       } else if (layer["type"] == "avgpool") {
-        models[i].add_avgpool_layer(layer["params"]["size"]);
+        models[i].add_avgpool_layer();
       } else if (layer["type"] == "lstm") {
-        models[i].add_lstm_layer(layer["params"]["input_size"],
-                                 layer["params"]["hidden_size"]);
+        models[i].add_lstm_layer();
+      } else if (layer["type"] == "tf") {
+        models[i].add_tf_layer();
       }
     }
   }
